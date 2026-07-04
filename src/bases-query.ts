@@ -112,7 +112,7 @@ export function findAllQueryResults(root: unknown, cap: number): FoundResult[] {
 		path: string;
 		depth: number;
 		parent: unknown;
-	}> = [{ o: root as object, path: "root", depth: 0, parent: null }];
+	}> = [{ o: root, path: "root", depth: 0, parent: null }];
 	let scanned = 0;
 	while (queue.length > 0 && scanned < 1200 && results.length < cap) {
 		const item = queue.shift();
@@ -127,7 +127,7 @@ export function findAllQueryResults(root: unknown, cap: number): FoundResult[] {
 		scanned++;
 
 		if (looksLikeQueryResult(o)) {
-			results.push({ q: o as unknown as QueryResultLike, path, owner: parent });
+			results.push({ q: o, path, owner: parent });
 			continue;
 		}
 		if (depth >= 5) {
@@ -161,7 +161,7 @@ export function findAllQueryResults(root: unknown, cap: number): FoundResult[] {
 						const c: unknown = v[i];
 						if (c !== null && typeof c === "object") {
 							queue.push({
-								o: c as object,
+								o: c,
 								path: `${path}.${n}[${i}]`,
 								depth: depth + 1,
 								parent: o,
@@ -172,7 +172,7 @@ export function findAllQueryResults(root: unknown, cap: number): FoundResult[] {
 				continue;
 			}
 			queue.push({
-				o: v as object,
+				o: v,
 				path: `${path}.${n}`,
 				depth: depth + 1,
 				parent: o,

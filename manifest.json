@@ -1,7 +1,7 @@
 {
   "id": "vaultpack",
   "name": "VaultPack",
-  "version": "0.18.4",
+  "version": "0.18.5",
   "minAppVersion": "1.13.0",
   "description": "Export selected notes and Bases views to a self-contained offline website — shareable as a folder, encrypted ZIP, or password-protected web package.",
   "author": "AkiSantin",

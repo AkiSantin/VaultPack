@@ -82,7 +82,7 @@ export async function runBasesProbe(app: App, plugin: Plugin): Promise<string> {
 }
 
 function sleep(ms: number): Promise<void> {
-	return new Promise((r) => setTimeout(r, ms));
+	return new Promise((r) => window.setTimeout(r, ms));
 }
 
 /** One timing sample: how much DOM exists, per a set of candidate row selectors. */

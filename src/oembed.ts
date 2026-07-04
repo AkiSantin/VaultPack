@@ -119,22 +119,16 @@ async function fetchOembedCard(
 		};
 		let title = typeof j.title === "string" ? j.title : "";
 		if (title === "" && typeof j.html === "string") {
-			// Twitter: the tweet text lives inside the returned blockquote HTML
-			const tmp = document.createElement("div");
-			tmp.innerHTML = j.html;
-			title = (tmp.textContent ?? "").trim().slice(0, 220);
+			// Twitter: the tweet text lives inside the returned blockquote HTML.
+			// Parse for text only; re-emitting provider HTML trips plugin review.
+			const doc = new DOMParser().parseFromString(
+				`<body>${j.html}</body>`,
+				"text/html",
+			);
+			title = (doc.body.textContent ?? "").trim().slice(0, 220);
 		}
 		const thumbUrl =
 			typeof j.thumbnail_url === "string" ? j.thumbnail_url : null;
-		let tweetHtml: string | null = null;
-		if (det.provider === "Twitter" && typeof j.html === "string") {
-			const tmp = document.createElement("div");
-			tmp.innerHTML = j.html;
-			for (const s of Array.from(tmp.querySelectorAll("script"))) {
-				s.remove();
-			}
-			tweetHtml = tmp.innerHTML;
-		}
 		return {
 			provider:
 				typeof j.provider_name === "string" ? j.provider_name : det.provider,
@@ -144,7 +138,7 @@ async function fetchOembedCard(
 				thumbUrl !== null
 					? await downloadThumb(app, ctx, thumbUrl)
 					: null,
-			tweetHtml,
+			tweetHtml: null,
 		};
 	} catch {
 		return null;
@@ -193,11 +187,13 @@ async function downloadThumb(
 }
 
 /**
- * Online-interactive, offline-degrading embeds (user decision 2026-07-03):
+ * Online-interactive, offline-degrading embeds:
  * - YouTube: a REAL playable iframe (plays in-page when online) layered over
  *   the bundled thumbnail, with a caption link below.
- * - Twitter: the official oEmbed blockquote + widgets.js → real tweet online,
- *   styled readable quote offline.
+ * - Twitter: a link card carrying the tweet text/author (parsed from oEmbed
+ *   metadata). The former blockquote+widgets.js embed was removed for
+ *   marketplace review compliance (unsafe remote HTML + dynamic <script>) —
+ *   2026-07-05 rename/review round; revisit post-approval if wanted.
  * - No metadata at all → plain fallback card with the link.
  */
 function buildCardEl(
@@ -207,18 +203,22 @@ function buildCardEl(
 	assetSrcPrefix: string,
 ): HTMLElement {
 	if (det.provider === "YouTube" && det.videoId !== null) {
-		const wrap = document.createElement("div");
+		const wrap = activeDocument.createElement("div");
 		wrap.className = "np-embed-block";
-		const video = document.createElement("div");
+		const video = activeDocument.createElement("div");
 		video.className = "np-video";
 		if (card?.thumbAssetName) {
-			video.style.backgroundImage = `url("${assetSrcPrefix}${encodeURI(card.thumbAssetName)}")`;
+			// setCssStyles (Obsidian helper) — plugin review forbids direct
+			// .style assignment even for elements headed into the export
+			video.setCssStyles({
+				backgroundImage: `url("${assetSrcPrefix}${encodeURI(card.thumbAssetName)}")`,
+			});
 		}
 		// YouTube (late-2025 policy) requires a real Referer — plays when this
 		// package is hosted over http(s); from file:// the page script swaps
 		// the iframe for a thumbnail card (Error 153 is structural there).
 		video.setAttribute("data-page-url", det.pageUrl);
-		const frame = document.createElement("iframe");
+		const frame = activeDocument.createElement("iframe");
 		frame.src = `https://www.youtube-nocookie.com/embed/${det.videoId}`;
 		frame.setAttribute("allowfullscreen", "");
 		frame.setAttribute(
@@ -230,7 +230,7 @@ function buildCardEl(
 		frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
 		video.appendChild(frame);
 		wrap.appendChild(video);
-		const caption = document.createElement("a");
+		const caption = activeDocument.createElement("a");
 		caption.className = "np-embed-caption-row";
 		caption.href = det.pageUrl;
 		caption.target = "_blank";
@@ -242,19 +242,6 @@ function buildCardEl(
 		wrap.appendChild(caption);
 		return wrap;
 	}
-	if (det.provider === "Twitter" && card?.tweetHtml) {
-		const wrap = document.createElement("div");
-		wrap.className = "np-embed-block np-tweet";
-		wrap.innerHTML = card.tweetHtml;
-		// widgets.js upgrades the blockquote to a real tweet when online;
-		// executes in the exported page only (injected scripts don't run here).
-		const s = document.createElement("script");
-		s.setAttribute("async", "");
-		s.src = "https://platform.twitter.com/widgets.js";
-		s.setAttribute("charset", "utf-8");
-		wrap.appendChild(s);
-		return wrap;
-	}
 	return buildLinkCard(card, det, locale, assetSrcPrefix);
 }
 
@@ -264,19 +251,19 @@ function buildLinkCard(
 	locale: NpLocale,
 	assetSrcPrefix: string,
 ): HTMLElement {
-	const a = document.createElement("a");
+	const a = activeDocument.createElement("a");
 	a.className = "np-oembed";
 	a.href = det.pageUrl;
 	a.target = "_blank";
 	a.rel = "noopener";
 	if (card === null) {
 		a.classList.add("np-oembed-fallback");
-		const body = document.createElement("div");
+		const body = activeDocument.createElement("div");
 		body.className = "np-oembed-body";
-		const title = document.createElement("div");
+		const title = activeDocument.createElement("div");
 		title.className = "np-oembed-title";
 		title.textContent = `${t(locale, "externalEmbed")} ↗`;
-		const meta = document.createElement("div");
+		const meta = activeDocument.createElement("div");
 		meta.className = "np-oembed-meta";
 		meta.textContent = det.pageUrl;
 		body.appendChild(title);
@@ -285,21 +272,21 @@ function buildLinkCard(
 		return a;
 	}
 	if (card.thumbAssetName !== null) {
-		const thumb = document.createElement("div");
+		const thumb = activeDocument.createElement("div");
 		thumb.className = "np-oembed-thumb";
-		const img = document.createElement("img");
+		const img = activeDocument.createElement("img");
 		img.src = `${assetSrcPrefix}${encodeURI(card.thumbAssetName)}`;
 		img.alt = "";
 		img.loading = "lazy";
 		thumb.appendChild(img);
 		a.appendChild(thumb);
 	}
-	const body = document.createElement("div");
+	const body = activeDocument.createElement("div");
 	body.className = "np-oembed-body";
-	const title = document.createElement("div");
+	const title = activeDocument.createElement("div");
 	title.className = "np-oembed-title";
 	title.textContent = card.title !== "" ? card.title : det.pageUrl;
-	const meta = document.createElement("div");
+	const meta = activeDocument.createElement("div");
 	meta.className = "np-oembed-meta";
 	meta.textContent =
 		card.author !== "" ? `${card.provider} · ${card.author}` : card.provider;

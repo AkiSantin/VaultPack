@@ -588,13 +588,16 @@ function notesIndexHtml(noteSlugs: Map<string, string>): string {
  */
 function captureAccent(): { css: string; raw: string } {
 	try {
-		const probe = document.createElement("span");
-		probe.style.color = "var(--interactive-accent)";
-		probe.style.position = "fixed";
-		probe.style.left = "-9999px";
-		document.body.appendChild(probe);
-		const resolved = getComputedStyle(probe).color.trim();
-		const bodyText = getComputedStyle(document.body).color.trim();
+		const probe = activeDocument.createElement("span");
+		probe.setCssStyles({
+			color: "var(--interactive-accent)",
+			position: "fixed",
+			left: "-9999px",
+		});
+		activeDocument.body.appendChild(probe);
+		const view = activeDocument.defaultView ?? window;
+		const resolved = view.getComputedStyle(probe).color.trim();
+		const bodyText = view.getComputedStyle(activeDocument.body).color.trim();
 		probe.remove();
 		if (
 			/^rgba?\([\d.,\s%/]+\)$/iu.test(resolved) &&
@@ -834,11 +837,13 @@ async function renderAllViews(
 	assets: Map<string, string>,
 ): Promise<ViewSection[]> {
 	const md = views.map((v) => `![[${baseFile.name}#${v.name}]]`).join("\n\n");
-	const host = document.createElement("div");
-	host.style.position = "fixed";
-	host.style.left = "-99999px";
-	host.style.width = "1000px";
-	document.body.appendChild(host);
+	const host = activeDocument.createElement("div");
+	host.setCssStyles({
+		position: "fixed",
+		left: "-99999px",
+		width: "1000px",
+	});
+	activeDocument.body.appendChild(host);
 	const renderOwner = new Component();
 	owner.addChild(renderOwner);
 	const sections: ViewSection[] = [];
@@ -851,12 +856,14 @@ async function renderAllViews(
 			hits = findAllQueryResults(renderOwner, views.length + 4);
 		}
 		dbg.viewHits = hits.length;
-		const spans = Array.from(host.querySelectorAll(".internal-embed"));
+		const spans = Array.from(
+			host.querySelectorAll<HTMLElement>(".internal-embed"),
+		);
 		for (let i = 0; i < views.length; i++) {
 			const v = views[i];
-			const span = spans[i];
+			const span = spans[i] ?? null;
 			const hit =
-				span !== undefined
+				span !== null
 					? hits.find((h) => {
 							const el = (h.owner as { containerEl?: unknown } | null)
 								?.containerEl;
@@ -977,7 +984,7 @@ async function waitForQueryResult(
 }
 
 function sleep(ms: number): Promise<void> {
-	return new Promise((r) => setTimeout(r, ms));
+	return new Promise((r) => window.setTimeout(r, ms));
 }
 
 // re-export for callers that only import from base-export

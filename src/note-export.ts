@@ -50,6 +50,24 @@ export interface NoteExportCtx {
 	debug: Array<Record<string, unknown>>;
 }
 
+function appendHtmlFragment(parent: HTMLElement, html: string): void {
+	const doc = new DOMParser().parseFromString(
+		`<body>${html}</body>`,
+		"text/html",
+	);
+	for (const child of Array.from(doc.body.childNodes)) {
+		parent.appendChild(activeDocument.importNode(child, true));
+	}
+}
+
+function appendSvgString(parent: HTMLElement, svg: string): void {
+	const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+	if (doc.documentElement.nodeName.toLowerCase() === "parsererror") {
+		return;
+	}
+	parent.appendChild(activeDocument.importNode(doc.documentElement, true));
+}
+
 /**
  * Phase 4: real note pages — properties block (frontmatter) + markdown body
  * rendered by Obsidian's own MarkdownRenderer, then post-processed for offline
@@ -159,11 +177,12 @@ function convertMathToSvg(
 	}
 	// Sources: MathJax v3 keeps MathItems on startup.document.math with the
 	// original TeX and the typeset root element.
-	const startupDoc = (
+	const startup = (
 		mj as {
-			startup?: { document?: { math?: Iterable<unknown> } };
+			startup?: { [key: string]: { math?: Iterable<unknown> } | undefined };
 		}
-	).startup?.document;
+	).startup;
+	const startupDoc = startup?.["document"];
 	const items = startupDoc?.math;
 	if (items === undefined) {
 		info.noMathList = true;
@@ -171,7 +190,7 @@ function convertMathToSvg(
 	}
 	let converted = 0;
 	let failed = 0;
-	for (const item of Array.from(items as Iterable<unknown>)) {
+	for (const item of Array.from(items)) {
 		try {
 			const it = item as {
 				math?: unknown;
@@ -195,7 +214,7 @@ function convertMathToSvg(
 			const target =
 				root.querySelector("mjx-container") ??
 				(root.matches("mjx-container") ? root : root);
-			const holder = document.createElement(
+			const holder = activeDocument.createElement(
 				it.display === true ? "div" : "span",
 			);
 			holder.className =
@@ -256,11 +275,13 @@ async function renderNoteBody(
 	// A per-note child Component isolates this note's rendered views, so
 	// embed→query-result matching never sees another note's leftovers, and
 	// everything unloads when we're done.
-	const host = document.createElement("div");
-	host.style.position = "fixed";
-	host.style.left = "-99999px";
-	host.style.width = "800px";
-	document.body.appendChild(host);
+	const host = activeDocument.createElement("div");
+	host.setCssStyles({
+		position: "fixed",
+		left: "-99999px",
+		width: "800px",
+	});
+	activeDocument.body.appendChild(host);
 	const renderOwner = new Component();
 	owner.addChild(renderOwner);
 	try {
@@ -285,7 +306,9 @@ async function renderNoteBody(
 			convertMathToSvg(host, dbg);
 			if (host.querySelector("mjx-container:not([data-np-svg])") !== null) {
 				const parts: string[] = [];
-				for (const s of Array.from(document.querySelectorAll("style"))) {
+				for (const s of Array.from(
+					activeDocument.querySelectorAll<HTMLStyleElement>("style"),
+				)) {
 					const txt = s.textContent ?? "";
 					if (txt.includes("mjx-")) {
 						parts.push(txt);
@@ -364,11 +387,11 @@ async function replaceBaseEmbeds(
 		});
 		if (hit === undefined) {
 			ctx.problems.push(`embed-no-data:${f.path}:${src}`);
-			const err = document.createElement("div");
+			const err = activeDocument.createElement("div");
 			err.className = "np-error";
-			const h2 = document.createElement("h2");
+			const h2 = activeDocument.createElement("h2");
 			h2.textContent = t(locale, "errorTitle");
-			const p = document.createElement("p");
+			const p = activeDocument.createElement("p");
 			p.textContent = `${src} — ${t(locale, "errorNoQueryData")}`;
 			err.appendChild(h2);
 			err.appendChild(p);
@@ -420,14 +443,14 @@ async function replaceBaseEmbeds(
 			resolveWikilink,
 			summariesCfg,
 		);
-		const wrap = document.createElement("div");
+		const wrap = activeDocument.createElement("div");
 		wrap.className = "np-embedded-base";
 		if (
 			runtimeType !== null &&
 			runtimeType !== "table" &&
 			table.renderedAs !== runtimeType
 		) {
-			const banner = document.createElement("div");
+			const banner = activeDocument.createElement("div");
 			banner.className = "np-banner";
 			banner.textContent = t(locale, "viewTypeFallback", {
 				type: runtimeType,
@@ -436,7 +459,7 @@ async function replaceBaseEmbeds(
 		}
 		// Caption links back to the base's exported page (Notion-style database
 		// title). Note pages live under notes/, base pages at the export root.
-		const caption = document.createElement("div");
+		const caption = activeDocument.createElement("div");
 		caption.className = "np-embed-caption";
 		if (
 			dest !== null &&
@@ -451,7 +474,7 @@ async function replaceBaseEmbeds(
 				viewName !== ""
 					? `#${encodeURI(viewAnchorId(viewName))}`
 					: "";
-			const a = document.createElement("a");
+			const a = activeDocument.createElement("a");
 			a.className = "np-embed-caption-link";
 			a.href = `${basePageFile(dest.path)}${anchor}`;
 			a.textContent = src;
@@ -460,11 +483,7 @@ async function replaceBaseEmbeds(
 			caption.textContent = src !== "" ? src : "```base";
 		}
 		wrap.appendChild(caption);
-		const tableHost = document.createElement("div");
-		tableHost.innerHTML = table.html;
-		while (tableHost.firstChild !== null) {
-			wrap.appendChild(tableHost.firstChild);
-		}
+		appendHtmlFragment(wrap, table.html);
 		span.replaceWith(wrap);
 		log.push({
 			src,
@@ -519,14 +538,14 @@ function makeHeadingsFoldable(
 		while (stack.length > 0 && stack[stack.length - 1].level >= level) {
 			stack.pop();
 		}
-		const sec = document.createElement("div");
+		const sec = activeDocument.createElement("div");
 		sec.className = "np-hsec";
-		const body = document.createElement("div");
+		const body = activeDocument.createElement("div");
 		body.className = "np-hsec-body";
 		target().appendChild(sec);
 		sec.appendChild(child);
 		// fold arrow BEFORE the heading text (Obsidian / Notion style)
-		const btn = document.createElement("span");
+		const btn = activeDocument.createElement("span");
 		btn.className = "np-fold-btn";
 		btn.textContent = "▾";
 		h.classList.add("np-hsec-heading");
@@ -644,7 +663,7 @@ async function postProcess(
 			a.classList.add("np-note-link");
 			linkLog.push({ linktext, to: dest?.path });
 		} else {
-			const span = document.createElement("span");
+			const span = activeDocument.createElement("span");
 			span.className = "np-link-out";
 			span.title = t(locale, "linkOutOfScope");
 			span.textContent = a.textContent ?? linktext;
@@ -661,7 +680,7 @@ async function postProcess(
 		root.querySelectorAll<HTMLAnchorElement>('a[href^="obsidian://"]'),
 	);
 	for (const a of obsAnchors) {
-		const span = document.createElement("span");
+		const span = activeDocument.createElement("span");
 		span.className = "np-link-out";
 		span.title = t(locale, "linkOutOfScope");
 		span.textContent = a.textContent ?? "";
@@ -724,14 +743,14 @@ async function postProcess(
 	// glyphs (inline svg, currentColor); unknown states keep the CSS fallback.
 	for (const li of Array.from(root.querySelectorAll("li.task-list-item"))) {
 		const input = li.querySelector("input.task-list-item-checkbox");
-		const span = document.createElement("span");
+		const span = activeDocument.createElement("span");
 		span.className = "np-check";
 		const task = li.getAttribute("data-task") ?? " ";
 		span.setAttribute("data-task", task);
 		const svg = checkboxSvg(task === "" ? " " : task);
 		if (svg !== null) {
 			span.classList.add("np-check-fa");
-			span.innerHTML = svg;
+			appendSvgString(span, svg);
 		}
 		if (input !== null) {
 			input.replaceWith(span);
@@ -764,18 +783,18 @@ async function postProcess(
 		}
 		const slug = ctx.noteSlugs.get(dest.path);
 		const hasContent = (span.textContent ?? "").trim().length > 0;
-		const frame = document.createElement("div");
+		const frame = activeDocument.createElement("div");
 		frame.className = "np-note-embed";
-		const head = document.createElement("div");
+		const head = activeDocument.createElement("div");
 		head.className = "np-embed-caption";
 		if (slug !== undefined) {
-			const a = document.createElement("a");
+			const a = activeDocument.createElement("a");
 			a.className = "np-embed-caption-link";
 			a.href = slug;
 			a.textContent = dest.basename;
 			head.appendChild(a);
 		} else {
-			const s = document.createElement("span");
+			const s = activeDocument.createElement("span");
 			s.className = "np-link-out";
 			s.title = t(locale, "linkOutOfScope");
 			s.textContent = dest.basename;
@@ -783,7 +802,7 @@ async function postProcess(
 		}
 		frame.appendChild(head);
 		if (hasContent) {
-			const body = document.createElement("div");
+			const body = activeDocument.createElement("div");
 			body.className = "np-note-embed-body";
 			while (span.firstChild !== null) {
 				body.appendChild(span.firstChild);
@@ -808,7 +827,7 @@ async function postProcess(
 	// target=_blank) offline. Render as an inert tag chip for now; can link to
 	// the search page once phase 8 lands.
 	for (const a of Array.from(root.querySelectorAll("a.tag"))) {
-		const chip = document.createElement("span");
+		const chip = activeDocument.createElement("span");
 		chip.className = "np-tag";
 		chip.textContent = a.textContent ?? "";
 		a.replaceWith(chip);
@@ -829,13 +848,15 @@ async function postProcess(
 	}
 	for (const pre of Array.from(root.querySelectorAll("pre"))) {
 		if (pre.querySelector("code") !== null) {
-			const b = document.createElement("button");
+			const b = activeDocument.createElement("button");
 			b.className = "np-copy";
 			b.type = "button";
 			b.setAttribute("aria-label", "copy");
 			// lucide "copy" icon (ISC licensed), inlined — zero dependencies
-			b.innerHTML =
-				'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+			appendSvgString(
+				b,
+				'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+			);
 			pre.appendChild(b);
 		}
 	}
@@ -957,7 +978,7 @@ function resolveImageFile(
 }
 
 function markBrokenImage(img: HTMLImageElement, locale: NpLocale): void {
-	const span = document.createElement("span");
+	const span = activeDocument.createElement("span");
 	span.className = "np-link-out";
 	span.textContent = `⚠ ${t(locale, "brokenImage")}: ${img.getAttribute("alt") ?? img.getAttribute("src") ?? "?"}`;
 	img.replaceWith(span);
@@ -982,5 +1003,5 @@ async function safeRead(app: App, f: TFile): Promise<string> {
 }
 
 function sleep(ms: number): Promise<void> {
-	return new Promise((r) => setTimeout(r, ms));
+	return new Promise((r) => window.setTimeout(r, ms));
 }

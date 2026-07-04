@@ -10,12 +10,17 @@ export function footer(locale: NpLocale, manifest: PluginManifest): string {
  * style/script elements are dropped first — Mermaid injects <style> into its
  * SVG and that CSS was polluting search snippets (user report 2026-07-04). */
 export function plainTextOf(html: string, cap = 2500): string {
-	const d = document.createElement("div");
-	d.innerHTML = html;
-	for (const el of Array.from(d.querySelectorAll("style, script"))) {
+	const doc = new DOMParser().parseFromString(
+		`<body>${html}</body>`,
+		"text/html",
+	);
+	for (const el of Array.from(doc.body.querySelectorAll("style, script"))) {
 		el.remove();
 	}
-	return (d.textContent ?? "").replace(/\s+/gu, " ").trim().slice(0, cap);
+	return (doc.body.textContent ?? "")
+		.replace(/\s+/gu, " ")
+		.trim()
+		.slice(0, cap);
 }
 
 export function escapeHtml(s: string): string {
@@ -176,10 +181,9 @@ document.addEventListener("click", function (e) {
     var pre = copy.closest("pre");
     var code = pre ? pre.querySelector("code") : null;
     var text = code ? code.textContent : "";
-    var orig = copy.innerHTML;
     function done(ok) {
       copy.textContent = ok ? "✓" : "✕";
-      setTimeout(function () { copy.innerHTML = orig; }, 1200);
+      window.setTimeout(function () { copy.textContent = "Copy"; }, 1200);
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(
