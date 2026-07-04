@@ -1,0 +1,19 @@
+{
+  "name": "vaultpack",
+  "version": "0.18.4",
+  "description": "VaultPack v2 - export selected Obsidian content (incl. Bases) to an offline-readable static HTML package",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@zip.js/zip.js": "^2.8.26",
+    "bcryptjs": "^3.0.3",
+    "esbuild": "^0.28.1",
+    "obsidian": "^1.13.1",
+    "typescript": "^6.0.3"
+  }
+}
