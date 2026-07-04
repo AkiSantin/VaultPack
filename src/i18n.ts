@@ -19,6 +19,10 @@ export type NpStringKey =
 	| "brokenImage"
 	| "viewTypeFallback"
 	| "externalEmbed"
+	| "pdfOpenNewTab"
+	| "startNotesSummaryTitle"
+	| "startIndexSummary"
+	| "notesCount"
 	| "searchPlaceholder"
 	| "searchNoResults"
 	| "home"
@@ -56,6 +60,11 @@ const STRINGS: Record<NpLocale, Record<NpStringKey, string>> = {
 		viewTypeFallback:
 			'View type "{type}" is not supported yet — shown as a table for now.',
 		externalEmbed: "External content",
+		pdfOpenNewTab: "Open PDF in a new tab",
+		startNotesSummaryTitle: "Notes ({n})",
+		startIndexSummary:
+			"The note list is collapsed to folder counts — use the sidebar tree or search to open any note.",
+		notesCount: "{n} notes",
 		searchPlaceholder: "Search…",
 		searchNoResults: "No results",
 		home: "HOME",
@@ -95,6 +104,11 @@ const STRINGS: Record<NpLocale, Record<NpStringKey, string>> = {
 		brokenImage: "找不到圖片",
 		viewTypeFallback: "「{type}」類型視圖尚未支援，先以表格呈現。",
 		externalEmbed: "外部內容",
+		pdfOpenNewTab: "在新分頁開啟 PDF",
+		startNotesSummaryTitle: "筆記（{n} 篇）",
+		startIndexSummary:
+			"筆記清單過長，已收合為資料夾統計——請用側欄樹或搜尋開啟任一筆記。",
+		notesCount: "{n} 篇",
 		searchPlaceholder: "搜尋…",
 		searchNoResults: "沒有結果",
 		home: "首頁",
@@ -134,6 +148,11 @@ const STRINGS: Record<NpLocale, Record<NpStringKey, string>> = {
 		brokenImage: "画像が見つかりません",
 		viewTypeFallback: "「{type}」タイプのビューは未対応のため、表として表示しています。",
 		externalEmbed: "外部コンテンツ",
+		pdfOpenNewTab: "PDF を新しいタブで開く",
+		startNotesSummaryTitle: "ノート（{n} 件）",
+		startIndexSummary:
+			"ノート一覧はフォルダ別の件数に折りたたんでいます。サイドバーのツリーか検索からノートを開いてください。",
+		notesCount: "{n} 件",
 		searchPlaceholder: "検索…",
 		searchNoResults: "結果なし",
 		home: "ホーム",

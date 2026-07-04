@@ -233,6 +233,17 @@ table.np-props {
 .np-embed-caption-row:hover {
   color: var(--np-color-accent);
 }
+/* PDF embeds: browser-native viewer in an iframe + open-in-tab caption */
+.np-pdf {
+  margin: var(--np-space-2) 0;
+}
+.np-pdf iframe {
+  width: 100%;
+  height: 75vh;
+  border: 1px solid var(--np-color-border);
+  border-radius: var(--np-radius);
+  background: var(--np-color-bg-subtle);
+}
 /* local (file://) YouTube fallback: thumbnail + play button linking out */
 .np-video-open {
   position: absolute;

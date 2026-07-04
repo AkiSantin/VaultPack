@@ -324,7 +324,16 @@ async function renderNoteBody(
 			}
 		}
 		return {
-			html: propsHtml + `<div class="np-note-content">${host.innerHTML}</div>`,
+			// data-np-src → src at serialization time: PDF iframes must NOT
+			// carry a live src while attached inside Obsidian (Electron main
+			// process crashed reading 'origin' on app://-relative PDF loads,
+			// 2026-07-05 user crash report).
+			html:
+				propsHtml +
+				`<div class="np-note-content">${host.innerHTML.replace(
+					/ data-np-src="/gu,
+					' src="',
+				)}</div>`,
 			extraCss,
 		};
 	} finally {
@@ -757,6 +766,63 @@ async function postProcess(
 		} else {
 			li.insertBefore(span, li.firstChild);
 		}
+	}
+
+	// Embedded PDFs (![[x.pdf]]): Obsidian's viewer DOM doesn't survive a
+	// static export (2026-07-05 user report: raw viewer wreckage broke the
+	// page). Copy the file into assets/ and swap in the browser's native
+	// viewer via <iframe>, plus an open-in-tab caption link as fallback.
+	for (const span of Array.from(
+		root.querySelectorAll<HTMLElement>(".internal-embed[src]"),
+	)) {
+		const src = span.getAttribute("src") ?? "";
+		const linkpath = stripSubpath(src);
+		if (!linkpath.toLowerCase().endsWith(".pdf")) {
+			continue;
+		}
+		const tf = app.metadataCache.getFirstLinkpathDest(linkpath, f.path);
+		if (tf === null) {
+			const miss = activeDocument.createElement("span");
+			miss.className = "np-link-out";
+			miss.setAttribute("title", t(locale, "linkOutOfScope"));
+			miss.textContent = src;
+			span.replaceWith(miss);
+			ctx.problems.push(`pdf-missing:${src}`);
+			continue;
+		}
+		const assetName = await copyAssetToExport(
+			app,
+			ctx.exportFolder,
+			tf,
+			ctx.assets,
+		);
+		if (assetName === null) {
+			ctx.problems.push(`pdf-copy:${tf.path}`);
+			continue;
+		}
+		// keep a #page=N deep link when present (browser viewers honor it)
+		const sub = src.slice(linkpath.length);
+		const pageFrag = /^#page=\d+$/u.test(sub) ? sub : "";
+		const href = `../assets/${encodeURI(assetName)}${pageFrag}`;
+		const wrap = activeDocument.createElement("div");
+		wrap.className = "np-pdf";
+		const frame = activeDocument.createElement("iframe");
+		// NOT a live src: an iframe loads the moment it attaches, and an
+		// app://-relative PDF load crashes Electron's main process ("Cannot
+		// read properties of undefined (reading 'origin')" — 2026-07-05 user
+		// crash). renderNoteBody rewrites data-np-src → src when the page is
+		// serialized, so the exported HTML still gets a working viewer.
+		frame.setAttribute("data-np-src", href);
+		frame.setAttribute("title", tf.basename);
+		wrap.appendChild(frame);
+		const cap = activeDocument.createElement("a");
+		cap.className = "np-embed-caption-row";
+		cap.href = href;
+		cap.target = "_blank";
+		cap.rel = "noopener noreferrer";
+		cap.textContent = `${tf.name} — ${t(locale, "pdfOpenNewTab")}`;
+		wrap.appendChild(cap);
+		span.replaceWith(wrap);
 	}
 
 	// Embedded NOTES (![[note]]): keep Obsidian-rendered inline content when it

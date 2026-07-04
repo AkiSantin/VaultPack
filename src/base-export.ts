@@ -79,6 +79,9 @@ export interface BasesExportSummary {
 export interface PageResult {
 	basePath: string;
 	outFile: string;
+	title: string;
+	/** rendered body awaiting the final-set link pass + write (2026-07-05) */
+	bodyHtml: string;
 	viewCount: number;
 	rowCount: number;
 	columnCount: number;
@@ -372,8 +375,6 @@ export async function exportScoped(
 			debug.bases as Array<Record<string, unknown>>,
 			owner,
 			assets,
-			security,
-			chromeFromNotes(input.title),
 		);
 		pages.push(page);
 		searchIndex.push({
@@ -399,6 +400,27 @@ export async function exportScoped(
 		registry.claim(file, p);
 		noteSlugs.set(p, file);
 	}
+
+	// Base pages: the full note set exists now — downgrade cell links whose
+	// target is not exported, then write the pages (rendered earlier, before
+	// this set was known; see exportOneBase).
+	const exportedNoteFiles = new Set(noteSlugs.values());
+	for (const p of pages) {
+		await app.vault.create(
+			`${exportFolder}/notes/${p.outFile}`,
+			buildPage({
+				locale,
+				title: p.title,
+				bodyHtml: finalizeCellLinks(p.bodyHtml, exportedNoteFiles, locale),
+				wide: true,
+				cssHrefs: CSS_FROM_NOTES,
+				chrome: chromeFromNotes(input.title),
+				pagePath: `notes/${p.outFile}`,
+				security,
+			}),
+		);
+	}
+
 	const noteCtx: NoteExportCtx = {
 		exportFolder,
 		noteSlugs,
@@ -451,7 +473,7 @@ export async function exportScoped(
 		`<span>${t(locale, "rows", { n: notePageCount })}</span>` +
 		`</div>` +
 		basesSection +
-		notesIndexHtml(noteSlugs) +
+		notesIndexHtml(noteSlugs, locale) +
 		footer(locale, manifest);
 	await app.vault.create(
 		`${exportFolder}/START_HERE.html`,
@@ -542,8 +564,37 @@ function baseTitleOf(basePath: string): string {
 	return name.replace(/\.base$/u, "");
 }
 
-/** START_HERE note index: grouped by top-level folder, human titles only. */
-function notesIndexHtml(noteSlugs: Map<string, string>): string {
+/**
+ * Base pages render before the final note set exists, so their cell anchors
+ * are emitted optimistically (see resolveWikilink in renderAllViews). Once
+ * the set is known this pass downgrades anchors whose target page is not in
+ * the export to the standard out-of-scope span (2026-07-05 user report).
+ * Anchor shape is self-produced and fixed: <a class="np-note-link" href=…>.
+ */
+function finalizeCellLinks(
+	bodyHtml: string,
+	exportedFiles: Set<string>,
+	locale: NpLocale,
+): string {
+	return bodyHtml.replace(
+		/<a class="np-note-link" href="([^"]*)">((?:(?!<\/a>)[\s\S])*)<\/a>/gu,
+		(whole, href: string, inner: string) =>
+			exportedFiles.has(href)
+				? whole
+				: `<span class="np-link-out" title="${escapeHtml(t(locale, "linkOutOfScope"))}">${inner}</span>`,
+	);
+}
+
+/** Above this many notes the START_HERE index collapses to folder counts. */
+const START_INDEX_LIMIT = 200;
+
+/**
+ * START_HERE note index: grouped by top-level folder, human titles only.
+ * Large exports collapse to per-folder counts (2026-07-05 user report:
+ * thousands of notes made the start page huge) — the sidebar tree and
+ * search still cover every note.
+ */
+function notesIndexHtml(noteSlugs: Map<string, string>, locale: NpLocale): string {
 	if (noteSlugs.size === 0) {
 		return "";
 	}
@@ -557,8 +608,26 @@ function notesIndexHtml(noteSlugs: Map<string, string>): string {
 		}
 		arr.push([p, file]);
 	}
-	return [...groups.entries()]
-		.sort(([a], [b]) => a.localeCompare(b))
+	const sorted = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+	if (noteSlugs.size > START_INDEX_LIMIT) {
+		return (
+			`<section class="np-start-sec"><h2 class="np-view-title">${escapeHtml(
+				t(locale, "startNotesSummaryTitle", { n: noteSlugs.size }),
+			)}</h2>` +
+			`<p class="np-list-sub">${escapeHtml(t(locale, "startIndexSummary"))}</p>` +
+			`<ul class="np-list">` +
+			sorted
+				.map(
+					([g, items]) =>
+						`<li><span>${escapeHtml(g)}</span><div class="np-list-sub"><span class="np-sub-prop">${escapeHtml(
+							t(locale, "notesCount", { n: items.length }),
+						)}</span></div></li>`,
+				)
+				.join("") +
+			`</ul></section>`
+		);
+	}
+	return sorted
 		.map(
 			([g, items]) =>
 				`<section class="np-start-sec"><h2 class="np-view-title">${escapeHtml(g)}</h2><ul class="np-list">` +
@@ -688,8 +757,6 @@ async function exportOneBase(
 	debugList: Array<Record<string, unknown>>,
 	owner: Component,
 	assets: Map<string, string>,
-	security?: PageSecurity,
-	chrome?: PageChrome,
 ): Promise<PageResult> {
 	const problems: string[] = [];
 	const dbg: Record<string, unknown> = { basePath: baseFile.path };
@@ -788,25 +855,16 @@ async function exportOneBase(
 		sectionsHtml +
 		footer(locale, manifest);
 
+	// NOT written to disk here: cell links need the final note set, which
+	// exists only after every base ran — exportScoped finalizes and writes.
 	const outFile = basePageFile(baseFile.path);
-	await app.vault.create(
-		`${exportFolder}/notes/${outFile}`,
-		buildPage({
-			locale,
-			title: baseFile.basename,
-			bodyHtml,
-			wide: true,
-			cssHrefs: CSS_FROM_NOTES,
-			chrome,
-			pagePath: `notes/${outFile}`,
-			security,
-		}),
-	);
 	dbg.outFile = outFile;
 	dbg.problems = problems;
 	return {
 		basePath: baseFile.path,
 		outFile,
+		title: baseFile.basename,
+		bodyHtml,
 		viewCount: views.length,
 		rowCount,
 		columnCount,
@@ -898,11 +956,13 @@ async function renderAllViews(
 								"../assets/",
 							)
 						: new Map<string, string>();
-				const entrySet = new Set(
-					hit.q.data
-						.map((e) => e.file?.path)
-						.filter((p): p is string => p !== undefined),
-				);
+				// Cell links resolve optimistically (any resolvable .md note gets
+				// an anchor); the not-in-export downgrade happens later in
+				// finalizeCellLinks() once the full note set is known. Checking
+				// against this base's own entries here was wrong for multi-base
+				// and whole-vault exports (2026-07-05 user report: every
+				// cross-note property link showed as out-of-scope even though
+				// the target page existed in the package).
 				const resolveWikilink = (target: string): string | null => {
 					const hash = target.indexOf("#");
 					const linkpath = hash >= 0 ? target.slice(0, hash) : target;
@@ -910,7 +970,7 @@ async function renderAllViews(
 						linkpath,
 						baseFile.path,
 					);
-					if (dest === null || !entrySet.has(dest.path)) {
+					if (dest === null || dest.extension !== "md") {
 						return null;
 					}
 					return hrefForNote(dest.path);
