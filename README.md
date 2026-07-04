@@ -1,4 +1,4 @@
-# VaultPack for Obsidian
+# VaultPack
 
 [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
@@ -90,7 +90,7 @@ Exports work offline too — external embeds then degrade to plain link cards.
 
 ## Requirements
 
-- Obsidian **1.13+** (Bases), desktop only (uses the desktop rendering
+- Obsidian **1.12.7+** (Bases), desktop only (uses the desktop rendering
   pipeline and file-system adapter).
 
 ## Development

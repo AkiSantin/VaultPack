@@ -1,4 +1,4 @@
-# VaultPack for Obsidian
+# VaultPack
 
 [English](README.md) | [日本語](README.ja.md)
 
@@ -64,7 +64,7 @@ VaultPack 只會在**匯出期間**發出網路請求，而且只用來替筆記
 
 ## 需求
 
-- Obsidian **1.13+**（Bases），僅桌面版（使用 desktop rendering pipeline 與 file-system adapter）。
+- Obsidian **1.12.7+**（Bases），僅桌面版（使用 desktop rendering pipeline 與 file-system adapter）。
 
 ## Development
 
